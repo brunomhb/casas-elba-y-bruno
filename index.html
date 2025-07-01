@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparador de Inmuebles</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .card-enter {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        .image-container {
+            position: relative;
+        }
+        .remove-image-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border-radius: 9999px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .image-container:hover .remove-image-btn {
+            opacity: 1;
+        }
+        /* Estilos para el sidebar en móvil */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease-in-out;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+        }
+        /* Estilos para modo vista/edición */
+        .is-viewing .edit-mode { display: none; }
+        .is-editing .view-mode { display: none; }
+        .is-viewing input:not([type="file"]), .is-viewing select, .is-viewing textarea {
+            background-color: transparent !important;
+            border-color: transparent !important;
+            padding-left: 0.1rem;
+            padding-right: 0.1rem;
+            cursor: default;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+        .is-viewing .form-label {
+            color: #64748b; /* text-slate-500 */
+        }
+        .is-viewing .notes-view {
+            white-space: pre-wrap; /* Mantiene saltos de línea en las notas */
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar fixed md:relative w-64 h-full bg-slate-800 text-white p-6 flex flex-col z-20">
+            <h2 class="text-2xl font-bold mb-8">Dashboard</h2>
+            
+            <div class="space-y-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-300 mb-2">Filtrar por Zona</h3>
+                    <select id="location-filter" class="w-full p-2 rounded-md bg-slate-700 text-white border-slate-600 focus:ring-blue-500 focus:border-blue-500">
+                        <option value="all">Mostrar Todas</option>
+                        <option value="Madrid centro">Madrid centro</option>
+                        <option value="Madrid fuera M30">Madrid fuera M30</option>
+                        <option value="Madrid Campo">Madrid Campo</option>
+                        <option value="Otras provincias">Otras provincias</option>
+                    </select>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-300 mb-2">Ordenar Inmuebles</h3>
+                    <select id="sort-filter" class="w-full p-2 rounded-md bg-slate-700 text-white border-slate-600 focus:ring-blue-500 focus:border-blue-500">
+                        <option value="default">Por defecto</option>
+                        <option value="rating-desc">Mejor Valoración (Suma)</option>
+                        <option value="price-desc">Precio (Mayor a Menor)</option>
+                        <option value="price-asc">Precio (Menor a Mayor)</option>
+                        <option value="profit-desc">Mejor Rentabilidad</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-auto text-sm text-slate-400">
+                <p>&copy; 2024 Comparador</p>
+            </div>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <main class="flex-1 h-full overflow-y-auto">
+            <div class="container mx-auto p-4 md:p-8">
+                <button id="menu-toggle" class="md:hidden fixed top-4 left-4 bg-blue-600 text-white p-2 rounded-md z-30">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+
+                <header class="text-center mb-8 mt-12 md:mt-0">
+                    <h1 class="text-4xl md:text-5xl font-bold text-slate-900">🏡 Casa Elba y Bruno</h1>
+                    <p class="mt-2 text-lg text-slate-600">Nuestro rincón para analizar y encontrar nuestro futuro hogar.</p>
+                </header>
+
+                <div class="text-center mb-10">
+                    <button id="add-property" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                        ➕ Añadir Nuevo Inmueble
+                    </button>
+                </div>
+
+                <div id="property-container" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+                    <!-- Las tarjetas se añadirán aquí -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Plantilla de Tarjeta -->
+    <template id="property-card-template">
+        <div class="property-card bg-white rounded-xl shadow-lg overflow-hidden card-enter" data-profitability="0" data-price="0" data-location="" data-rating-sum="0">
+            <div class="p-6">
+                <input type="text" class="property-name text-2xl font-bold text-slate-900 w-full border-b-2 focus:border-blue-500 focus:outline-none" placeholder="Nombre o Dirección">
+                
+                <div class="mt-4">
+                    <label class="form-label block text-sm font-medium text-slate-600">Zona</label>
+                    <select class="property-location w-full p-2 border rounded-md">
+                        <option value="Madrid centro">Madrid centro</option>
+                        <option value="Madrid fuera M30">Madrid fuera M30</option>
+                        <option value="Madrid Campo">Madrid Campo</option>
+                        <option value="Otras provincias">Otras provincias</option>
+                    </select>
+                </div>
+
+                <div class="mt-4">
+                    <label class="form-label block text-sm font-medium text-slate-600">Link de Idealista</label>
+                    <a href="#" target="_blank" class="idealista-view-link view-mode text-blue-600 hover:underline break-all">Ver en Idealista</a>
+                    <input type="url" class="idealista-link edit-mode w-full text-sm text-slate-500 p-2 border rounded-md" placeholder="Pega aquí el link de Idealista">
+                </div>
+
+                <div class="image-container my-4">
+                    <img class="image-preview w-full h-48 object-cover rounded-lg bg-slate-200 hidden" src="" alt="Vista previa del inmueble">
+                    <div class="remove-image-btn hidden" title="Eliminar imagen">✖</div>
+                </div>
+                <input type="file" class="property-photo w-full text-slate-600 edit-mode" accept="image/*">
+
+                <div class="mt-6 space-y-4">
+                    <!-- Datos de Compra, Reforma, Gastos... (sin cambios) -->
+                    <h3 class="text-lg font-bold text-slate-800 border-b pb-2">Datos de Compra</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="form-label block text-sm font-medium text-slate-600">Precio Venta (€)</label>
+                            <input type="number" class="sale-price mt-1 w-full p-2 border rounded-md" placeholder="250000">
+                        </div>
+                        <div>
+                            <label class="form-label block text-sm font-medium text-slate-600">Precio Oferta (€)</label>
+                            <input type="number" class="offer-price mt-1 w-full p-2 border rounded-md" placeholder="240000">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label block text-sm font-medium text-slate-600">Gastos de Compra (ITP 6% + 1500€)</label>
+                        <div class="purchase-costs mt-1 w-full p-2 bg-slate-100 rounded-md font-mono text-slate-700">0.00 €</div>
+                    </div>
+
+                    <h3 class="text-lg font-bold text-slate-800 border-b pb-2 mt-4">Valoraciones</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="form-label block text-sm font-medium text-slate-600">Elba (1-10)</label>
+                            <select class="rating-elba mt-1 w-full p-2 border rounded-md">
+                                <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label block text-sm font-medium text-slate-600">Bruno (1-10)</label>
+                            <select class="rating-bruno mt-1 w-full p-2 border rounded-md">
+                                <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <h3 class="text-lg font-bold text-slate-800 border-b pb-2 mt-4">Notas</h3>
+                    <div>
+                        <div class="notes-view view-mode p-2 bg-slate-50 rounded-md min-h-[40px]"></div>
+                        <textarea class="notes-edit edit-mode w-full p-2 border rounded-md" rows="3" placeholder="Anotaciones sobre la visita, pros, contras..."></textarea>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="bg-slate-50 p-6">
+                <div class="text-center mb-4">
+                    <h3 class="text-md font-bold text-slate-700">Rentabilidad Neta Anual</h3>
+                    <div class="profitability text-5xl font-bold my-2">- %</div>
+                </div>
+                <div class="flex gap-2">
+                     <button class="edit-btn view-mode w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition">Editar</button>
+                     <button class="save-btn edit-mode w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition">Guardar</button>
+                     <button class="remove-property w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const addPropertyBtn = document.getElementById('add-property');
+            const propertyContainer = document.getElementById('property-container');
+            const propertyCardTemplate = document.getElementById('property-card-template');
+            const sortFilter = document.getElementById('sort-filter');
+            const locationFilter = document.getElementById('location-filter');
+            const menuToggle = document.getElementById('menu-toggle');
+            const sidebar = document.getElementById('sidebar');
+
+            loadProperties();
+
+            addPropertyBtn.addEventListener('click', () => {
+                createPropertyCard({}, true); // Create in edit mode
+            });
+
+            sortFilter.addEventListener('change', applyFiltersAndSort);
+            locationFilter.addEventListener('change', applyFiltersAndSort);
+            
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('open');
+            });
+
+            function createPropertyCard(data = {}, isEditing = false) {
+                // FIX: Append the card to the DOM first, then query and modify it.
+                // This is more robust and avoids errors with querying detached fragments.
+                const cardClone = propertyCardTemplate.content.cloneNode(true);
+                propertyContainer.appendChild(cardClone);
+                const cardElement = propertyContainer.lastElementChild;
+
+                cardElement.querySelector('.property-name').value = data.name || '';
+                cardElement.querySelector('.property-location').value = data.location || 'Madrid centro';
+                cardElement.querySelector('.rating-elba').value = data.ratingElba || 1;
+                cardElement.querySelector('.rating-bruno').value = data.ratingBruno || 1;
+                cardElement.querySelector('.notes-edit').value = data.notes || '';
+                cardElement.querySelector('.sale-price').value = data.salePrice || '';
+                cardElement.querySelector('.offer-price').value = data.offerPrice || '';
+                cardElement.querySelector('.renovation-budget').value = data.renovationBudget || '';
+                cardElement.querySelector('.renovation-duration').value = data.renovationDuration || '';
+                cardElement.querySelector('.ibi').value = data.ibi || '';
+                cardElement.querySelector('.community-fees').value = data.communityFees || '';
+                cardElement.querySelector('.rental-income').value = data.rentalIncome || '';
+                cardElement.querySelector('.idealista-link').value = data.idealistaLink || '';
+                
+                const imagePreview = cardElement.querySelector('.image-preview');
+                const removeImageBtn = cardElement.querySelector('.remove-image-btn');
+                if (data.image) {
+                    imagePreview.src = data.image;
+                    imagePreview.classList.remove('hidden');
+                    removeImageBtn.classList.remove('hidden');
+                }
+                
+                addCardEventListeners(cardElement);
+                updateIdealistaLink(cardElement);
+                updateNotesView(cardElement);
+                calculate(cardElement); 
+                
+                if (isEditing) {
+                    setCardMode(cardElement, 'edit');
+                    cardElement.querySelector('.property-name').focus();
+                } else {
+                    setCardMode(cardElement, 'view');
+                }
+            }
+            
+            function setCardMode(card, mode) {
+                const isEditing = mode === 'edit';
+                card.classList.toggle('is-editing', isEditing);
+                card.classList.toggle('is-viewing', !isEditing);
+
+                card.querySelectorAll('input:not([type="file"]), select, textarea').forEach(input => {
+                    input.disabled = !isEditing;
+                });
+            }
+
+            function addCardEventListeners(card) {
+                card.addEventListener('input', () => {
+                    calculate(card);
+                });
+
+                card.querySelector('.edit-btn').addEventListener('click', () => {
+                    setCardMode(card, 'edit');
+                });
+
+                card.querySelector('.save-btn').addEventListener('click', () => {
+                    updateIdealistaLink(card);
+                    updateNotesView(card);
+                    saveProperties();
+                    setCardMode(card, 'view');
+                    applyFiltersAndSort();
+                });
+
+                card.querySelector('.remove-property').addEventListener('click', () => {
+                    card.remove();
+                    saveProperties();
+                });
+                
+                card.querySelector('.property-photo').addEventListener('change', function(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const preview = card.querySelector('.image-preview');
+                            preview.src = e.target.result;
+                            preview.classList.remove('hidden');
+                            card.querySelector('.remove-image-btn').classList.remove('hidden');
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+
+                card.querySelector('.remove-image-btn').addEventListener('click', () => {
+                    const preview = card.querySelector('.image-preview');
+                    preview.src = '';
+                    preview.classList.add('hidden');
+                    card.querySelector('.remove-image-btn').classList.add('hidden');
+                    card.querySelector('.property-photo').value = '';
+                });
+            }
+
+            function calculate(card) {
+                // Financial calculations
+                const offerPrice = parseFloat(card.querySelector('.offer-price').value) || 0;
+                const renovationBudget = parseFloat(card.querySelector('.renovation-budget').value) || 0;
+                const ibi = parseFloat(card.querySelector('.ibi').value) || 0;
+                const communityFees = parseFloat(card.querySelector('.community-fees').value) || 0;
+                const rentalIncome = parseFloat(card.querySelector('.rental-income').value) || 0;
+                
+                const itpRate = 0.06;
+                const notaryFees = 1500;
+                
+                const itp = offerPrice * itpRate;
+                const purchaseCosts = itp + notaryFees;
+                card.querySelector('.purchase-costs').textContent = `${purchaseCosts.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}`;
+
+                const totalInvestment = offerPrice + purchaseCosts + renovationBudget;
+                const annualExpenses = ibi + (communityFees * 12);
+                const annualIncome = rentalIncome * 12;
+                const netAnnualProfit = annualIncome - annualExpenses;
+                
+                let profitability = 0;
+                if (totalInvestment > 0) {
+                    profitability = (netAnnualProfit / totalInvestment) * 100;
+                }
+                
+                const profitabilityEl = card.querySelector('.profitability');
+                profitabilityEl.textContent = `${profitability.toFixed(2)} %`;
+                
+                // Rating calculations
+                const ratingElba = parseInt(card.querySelector('.rating-elba').value, 10);
+                const ratingBruno = parseInt(card.querySelector('.rating-bruno').value, 10);
+
+                // Set data attributes for sorting and filtering
+                card.dataset.price = offerPrice;
+                card.dataset.profitability = profitability.toFixed(2);
+                card.dataset.location = card.querySelector('.property-location').value;
+                card.dataset.ratingSum = ratingElba + ratingBruno;
+
+                profitabilityEl.classList.remove('text-red-500', 'text-amber-500', 'text-green-500');
+                if (profitability < 3) profitabilityEl.classList.add('text-red-500');
+                else if (profitability < 5) profitabilityEl.classList.add('text-amber-500');
+                else profitabilityEl.classList.add('text-green-500');
+            }
+
+            function updateIdealistaLink(card) {
+                const linkInput = card.querySelector('.idealista-link');
+                const linkView = card.querySelector('.idealista-view-link');
+                const url = linkInput.value;
+                if (url) {
+                    linkView.href = url.startsWith('http') ? url : `https://${url}`;
+                    linkView.textContent = "Ver en Idealista";
+                    linkView.classList.remove('hidden');
+                } else {
+                    linkView.textContent = 'N/A';
+                    linkView.href = '#';
+                }
+            }
+
+            function updateNotesView(card) {
+                const notesEdit = card.querySelector('.notes-edit');
+                const notesView = card.querySelector('.notes-view');
+                notesView.textContent = notesEdit.value || 'No hay notas.';
+            }
+
+            function applyFiltersAndSort() {
+                const sortBy = sortFilter.value;
+                const filterBy = locationFilter.value;
+                
+                const cards = Array.from(propertyContainer.querySelectorAll('.property-card'));
+
+                cards.forEach(card => {
+                    const cardLocation = card.dataset.location;
+                    if (filterBy === 'all' || cardLocation === filterBy) {
+                        card.style.display = '';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+
+                const visibleCards = cards.filter(card => card.style.display !== 'none');
+
+                visibleCards.sort((a, b) => {
+                    if (sortBy === 'default') return 0;
+
+                    const priceA = parseFloat(a.dataset.price);
+                    const priceB = parseFloat(b.dataset.price);
+                    const profitA = parseFloat(a.dataset.profitability);
+                    const profitB = parseFloat(b.dataset.profitability);
+                    const ratingA = parseInt(a.dataset.ratingSum, 10);
+                    const ratingB = parseInt(b.dataset.ratingSum, 10);
+
+                    switch (sortBy) {
+                        case 'price-desc': return priceB - priceA;
+                        case 'price-asc': return priceA - priceB;
+                        case 'profit-desc': return profitB - profitA;
+                        case 'rating-desc': return ratingB - ratingA;
+                        default: return 0;
+                    }
+                });
+                
+                visibleCards.forEach(card => propertyContainer.appendChild(card));
+            }
+            
+            function saveProperties() {
+                const properties = [];
+                document.querySelectorAll('.property-card').forEach(card => {
+                    const imagePreview = card.querySelector('.image-preview');
+                    const data = {
+                        name: card.querySelector('.property-name').value,
+                        location: card.querySelector('.property-location').value,
+                        ratingElba: card.querySelector('.rating-elba').value,
+                        ratingBruno: card.querySelector('.rating-bruno').value,
+                        notes: card.querySelector('.notes-edit').value,
+                        salePrice: card.querySelector('.sale-price').value,
+                        offerPrice: card.querySelector('.offer-price').value,
+                        renovationBudget: card.querySelector('.renovation-budget').value,
+                        renovationDuration: card.querySelector('.renovation-duration').value,
+                        ibi: card.querySelector('.ibi').value,
+                        communityFees: card.querySelector('.community-fees').value,
+                        rentalIncome: card.querySelector('.rental-income').value,
+                        idealistaLink: card.querySelector('.idealista-link').value,
+                        image: imagePreview.classList.contains('hidden') ? null : imagePreview.src,
+                    };
+                    properties.push(data);
+                });
+                localStorage.setItem('propertiesData', JSON.stringify(properties));
+            }
+            
+            function loadProperties() {
+                const data = localStorage.getItem('propertiesData');
+                propertyContainer.innerHTML = ''; 
+                if (data) {
+                    const properties = JSON.parse(data);
+                    properties.forEach(propData => createPropertyCard(propData, false)); // Load in view mode
+                }
+                applyFiltersAndSort();
+            }
+        });
+    </script>
+</body>
+</html>
